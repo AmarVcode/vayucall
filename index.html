@@ -236,8 +236,8 @@
 
     <script>
         // FIREBASE & AGORA CONFIG
-        const AGORA_APP_ID = "2ee7adc4961444aa88ed73b0174b15c5";
-        const AGORA_TOKEN = "d161f2298d7f4ca5a88415e75ccd3312"; // Set this to your Temp Token if App Certificate is enabled
+        const AGORA_APP_ID = "2ee7adc4961444aa88ed73b0174b15c5"; // Ensure this is your CORRECT Agora App ID
+        const AGORA_TOKEN = "007eJxTYCiNZ344O9TxzFebFy+dPVh57XLCV04XLQus9zqmq8q/84kCg1FqqnliSrKJpZmhiYlJYqKFRWqKuXGSgaG5SZKhabIp4yT+rIZARgbJg61MjAwQCOKzM5SkFpdk5qUzMAAADb0eFw==";
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyCiOP84CNL286wRNRnpfWZxipA_taDKe4U",
             authDomain: "vayucall.firebaseapp.com",
@@ -497,7 +497,9 @@
                 await client.publish([localTracks.audio, localTracks.video]);
             } catch (err) { 
                 console.error("Agora Join Error:", err);
-                if (err.message.includes("dynamic use static key")) {
+                if (err.message.includes("invalid vendor key")) {
+                    showToast("<b>Agora Error:</b> Invalid App ID. Please verify your App ID in the Agora Console.", "error");
+                } else if (err.message.includes("dynamic use static key")) {
                     showToast("<b>Agora Security Error:</b> Your project has 'App Certificate' enabled. Please disable it in Agora Console or provide a Token.", "error");
                 } else {
                     showToast(err.message, "error");
