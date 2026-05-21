@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VayuCall | Premium Enterprise RTC</title>
+    <!-- SDKs -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #040408;
+            --surface: #0C0C14;
+            --surface-light: #161624;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent-cyan: #00E5FF;
+            --accent-purple: #8B5CF6;
+            --accent-green: #10B981;
+            --accent-pink: #F43F5E;
+            --text-main: #F8FAFC;
+            --text-dim: #94A3B8;
+            --sidebar-width: 280px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; }
+        body { background-color: var(--bg-color); color: var(--text-main); overflow: hidden; height: 100vh; }
+
+        /* Utilities */
+        .glass { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); }
+        .btn { padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; border: none; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+        .btn-primary { background: var(--accent-cyan); color: #000; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4); }
+        .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--glass-border); }
+        .btn-ghost:hover { background: var(--glass); color: var(--text-main); }
+        
+        /* Layout Transitions */
+        .page { display: none; height: 100%; width: 100%; position: absolute; top: 0; left: 0; animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Auth Screen */
+        #auth-screen { display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at top right, rgba(0, 229, 255, 0.05), transparent), radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.05), transparent); }
+        .auth-card { width: 440px; padding: 48px; border-radius: 32px; text-align: center; }
+        .auth-logo { font-size: 2.5rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+        .auth-logo span { background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .input-group { margin-bottom: 24px; text-align: left; }
+        .input-group label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; }
+        .input-frame { background: var(--surface); border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px 18px; transition: 0.3s; }
+        .input-frame:focus-within { border-color: var(--accent-cyan); box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.1); }
+        input { background: transparent; border: none; color: var(--text-main); width: 100%; font-size: 1rem; font-weight: 500; }
+
+        /* Main App Layout */
+        #main-app { display: none; grid-template-columns: var(--sidebar-width) 1fr; height: 100vh; }
+        
+        /* Sidebar */
+        .sidebar { height: 100%; padding: 32px; display: flex; flex-direction: column; border-right: 1px solid var(--glass-border); background: var(--surface); }
+        .nav-logo { font-size: 1.5rem; font-weight: 800; margin-bottom: 48px; color: var(--text-main); text-decoration: none; }
+        .nav-menu { flex: 1; list-style: none; }
+        .nav-item { padding: 14px 20px; border-radius: 14px; margin-bottom: 8px; cursor: pointer; color: var(--text-dim); font-weight: 600; transition: 0.3s; display: flex; align-items: center; gap: 14px; }
+        .nav-item:hover { background: var(--glass); color: var(--text-main); }
+        .nav-item.active { background: var(--accent-cyan); color: #000; }
+        
+        .user-card { margin-top: auto; padding: 20px; border-radius: 20px; background: var(--surface-light); display: flex; align-items: center; gap: 12px; }
+        .avatar { width: 44px; height: 44px; border-radius: 14px; background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple)); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #000; font-size: 1.2rem; }
+
+        /* Main Viewport */
+        .viewport { position: relative; overflow-y: auto; padding: 48px; background: radial-gradient(circle at 10% 10%, rgba(0, 229, 255, 0.02), transparent); }
+        .view-section { display: none; }
+        .view-section.active { display: block; animation: fadeIn 0.4s ease-out; }
+
+        /* Dashboard Grid */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 48px; }
+        .stat-card { padding: 24px; border-radius: 24px; display: flex; flex-direction: column; gap: 12px; }
+        .stat-val { font-size: 2rem; font-weight: 800; }
+        .stat-label { font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
+
+        /* User List */
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+        .user-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .user-item { padding: 20px; border-radius: 20px; display: flex; align-items: center; justify-content: space-between; transition: 0.3s; cursor: pointer; }
+        .user-item:hover { background: var(--surface-light); transform: scale(1.02); }
+        .status-badge { padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+        .status-online { background: rgba(16, 185, 129, 0.1); color: var(--accent-green); }
+        .status-offline { background: rgba(148, 163, 184, 0.1); color: var(--text-dim); }
+
+        /* Call Overlay */
+        #call-overlay { display: none; position: fixed; inset: 0; background: #000; z-index: 1000; }
+        .video-canvas { width: 100%; height: 100%; display: grid; grid-template-columns: 1fr; }
+        #remote-video { width: 100%; height: 100%; object-fit: cover; }
+        #local-pip { position: absolute; top: 40px; right: 40px; width: 320px; height: 180px; border-radius: 24px; border: 2px solid var(--accent-cyan); overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.8); z-index: 10; }
+        
+        .call-controls { position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; padding: 16px; border-radius: 24px; z-index: 10; }
+        .ctrl-btn { width: 64px; height: 64px; border-radius: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: white; }
+        .ctrl-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.05); }
+        .ctrl-btn.active-off { background: var(--accent-pink); border-color: var(--accent-pink); }
+        .ctrl-btn.end { background: var(--accent-pink); width: 80px; }
+
+        /* Incoming Modal */
+        #incoming-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; align-items: center; justify-content: center; }
+        .incoming-card { width: 360px; padding: 48px; text-align: center; border-radius: 32px; animation: pulseGlow 2s infinite; }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.2); } 70% { box-shadow: 0 0 0 30px rgba(0, 229, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); } }
+
+        /* Toast */
+        #toast-container { position: fixed; bottom: 40px; right: 40px; z-index: 9999; display: flex; flex-direction: column; gap: 12px; }
+    </style>
+</head>
+<body>
+
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="page" style="display: flex;">
+        <div class="auth-card glass">
+            <h1 class="auth-logo">VAYU<span>CALL</span></h1>
+            <p style="color: var(--text-dim); margin-bottom: 40px; font-weight: 500;">Secure Enterprise Video Streams</p>
+            
+            <div id="login-form">
+                <div class="input-group">
+                    <label>Email Address</label>
+                    <div class="input-frame"><input type="email" id="auth-email" placeholder="name@company.com"></div>
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <div class="input-frame"><input type="password" id="auth-pass" placeholder="••••••••"></div>
+                </div>
+                <button class="btn btn-primary" style="width: 100%; justify-content: center;" id="btn-login">Access Portal</button>
+                <p style="margin-top: 24px; color: var(--text-dim); font-size: 0.9rem;">
+                    New investigator? <span style="color: var(--accent-cyan); cursor: pointer; font-weight: 700;" id="toggle-signup">Create Identity</span>
+                </p>
+            </div>
+
+            <div id="signup-form" style="display: none;">
+                <div class="input-group">
+                    <label>Unique Call Sign (Username)</label>
+                    <div class="input-frame"><input type="text" id="signup-user" placeholder="cyber_phantom"></div>
+                </div>
+                <div class="input-group">
+                    <label>Email Address</label>
+                    <div class="input-frame"><input type="email" id="signup-email" placeholder="name@company.com"></div>
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <div class="input-frame"><input type="password" id="signup-pass" placeholder="••••••••"></div>
+                </div>
+                <button class="btn btn-primary" style="width: 100%; justify-content: center;" id="btn-signup">Register Stream Link</button>
+                <p style="margin-top: 24px; color: var(--text-dim); font-size: 0.9rem;">
+                    Already indexed? <span style="color: var(--accent-cyan); cursor: pointer; font-weight: 700;" id="toggle-login">Sign In</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Layout -->
+    <div id="main-app" class="page">
+        <aside class="sidebar">
+            <a href="#" class="nav-logo">VAYU<span>CALL</span></a>
+            
+            <nav class="nav-menu">
+                <div class="nav-item active" data-view="home">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Home
+                </div>
+                <div class="nav-item" data-view="contacts">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Contacts
+                </div>
+                <div class="nav-item" data-view="settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                </div>
+            </nav>
+
+            <div class="user-card glass">
+                <div class="avatar" id="nav-avatar">?</div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="nav-username">Agent</div>
+                    <div style="font-size: 0.75rem; color: var(--text-dim);" id="nav-status">Online</div>
+                </div>
+                <button style="background: transparent; border: none; color: var(--accent-pink); cursor: pointer;" id="btn-logout">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                </button>
+            </div>
+        </aside>
+
+        <main class="viewport">
+            <!-- Home View -->
+            <section id="view-home" class="view-section active">
+                <h1 style="font-size: 2.5rem; margin-bottom: 40px; font-weight: 800;">Welcome, <span id="welcome-name" style="color: var(--accent-cyan);">Commander</span></h1>
+                
+                <div class="stats-grid">
+                    <div class="stat-card glass">
+                        <span class="stat-label">Active Users</span>
+                        <span class="stat-val" id="stat-online">0</span>
+                    </div>
+                    <div class="stat-card glass" style="border-left: 4px solid var(--accent-purple);">
+                        <span class="stat-label">Network Load</span>
+                        <span class="stat-val">Low</span>
+                    </div>
+                    <div class="stat-card glass" style="border-left: 4px solid var(--accent-green);">
+                        <span class="stat-label">Encryption</span>
+                        <span class="stat-val">AES-256</span>
+                    </div>
+                </div>
+
+                <div class="section-header">
+                    <h2 style="font-size: 1.5rem; font-weight: 700;">Broadcast Grid</h2>
+                    <div class="btn btn-ghost" id="refresh-users">Sync Network</div>
+                </div>
+
+                <div class="user-grid" id="main-user-grid">
+                    <!-- Users injected here -->
+                </div>
+            </section>
+
+            <!-- Contacts View -->
+            <section id="view-contacts" class="view-section">
+                <h1 style="font-size: 2.5rem; margin-bottom: 40px; font-weight: 800;">Global Index</h1>
+                <div class="input-frame" style="margin-bottom: 32px; max-width: 500px;">
+                    <input type="text" id="contact-search" placeholder="Search call signs...">
+                </div>
+                <div class="user-grid" id="contacts-user-grid"></div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="view-settings" class="view-section">
+                <h1 style="font-size: 2.5rem; margin-bottom: 40px; font-weight: 800;">Neural Config</h1>
+                <div class="glass" style="padding: 40px; border-radius: 32px; max-width: 600px;">
+                    <div class="input-group">
+                        <label>Display Name</label>
+                        <div class="input-frame"><input type="text" id="pref-name" readonly></div>
+                    </div>
+                    <div class="input-group">
+                        <label>Status Signature</label>
+                        <div class="input-frame"><input type="text" id="pref-status" placeholder="Decoding reality..."></div>
+                    </div>
+                    <button class="btn btn-primary" id="save-settings">Update Profile</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Call Overlay -->
+    <div id="call-overlay">
+        <div class="video-canvas">
+            <div id="remote-video"></div>
+        </div>
+        <div id="local-pip"><div id="local-video" style="width:100%; height:100%"></div></div>
+        
+        <div class="call-controls glass">
+            <div class="ctrl-btn" id="call-mic">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            </div>
+            <div class="ctrl-btn" id="call-video">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            </div>
+            <div class="ctrl-btn" id="call-screen">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            </div>
+            <div class="ctrl-btn end" id="call-end">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6.13-6.14 19.86 19.86 0 0 1-3.12-8.69 2 2 0 0 1 2-2.18h3a2 2 0 0 1 2 1.72 12.81 12.81 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Incoming Modal -->
+    <div id="incoming-modal">
+        <div class="incoming-card glass">
+            <div class="avatar" id="inc-avatar" style="width: 80px; height: 80px; font-size: 2rem; margin: 0 auto 24px; border-radius: 24px;">?</div>
+            <h2 id="inc-name" style="font-size: 1.8rem; margin-bottom: 8px;">Agent</h2>
+            <p style="color: var(--text-dim); margin-bottom: 40px; font-weight: 500;">Establishing Neural Link...</p>
+            <div style="display: flex; gap: 16px;">
+                <button class="btn btn-ghost" style="flex: 1; border-color: var(--accent-pink); color: var(--accent-pink);" id="btn-decline">Decline</button>
+                <button class="btn btn-primary" style="flex: 1; background: var(--accent-green);" id="btn-accept">Accept</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script>
+        // FIREBASE & AGORA CONFIG
+        const AGORA_APP_ID = "2ee7adc4961444aa88ed73b0174b15c5";
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCiOP84CNL286wRNRnpfWZxipA_taDKe4U",
+            authDomain: "vayucall.firebaseapp.com",
+            databaseURL: "https://vayucall-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "vayucall",
+            storageBucket: "vayucall.firebasestorage.app",
+            messagingSenderId: "176686015389",
+            appId: "1:176686015389:web:9618ded395fb9059160574",
+            measurementId: "G-R19E6Y9N0X"
+        };
+
+        firebase.initializeApp(FIREBASE_CONFIG);
+        const auth = firebase.auth();
+        const db = firebase.database();
+        let localUser = null;
+        let localTracks = { video: null, audio: null, screen: null };
+        let client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        let isScreenSharing = false;
+
+        // UI HELPERS
+        function showToast(msg, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = 'glass view-transition';
+            toast.style.cssText = `padding: 16px 24px; color: white; border-radius: 16px; font-size: 0.9rem; min-width: 300px; border-left: 6px solid ${type === 'error' ? 'var(--accent-pink)' : 'var(--accent-cyan)'}; background: rgba(12, 12, 20, 0.95); box-shadow: 0 10px 30px rgba(0,0,0,0.5);`;
+            toast.innerHTML = msg;
+            document.getElementById('toast-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function navigate(viewId) {
+            document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            document.querySelector(`.nav-item[data-view="${viewId}"]`).classList.add('active');
+        }
+
+        // AUTH HANDLERS
+        document.getElementById('toggle-signup').onclick = () => {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('signup-form').style.display = 'block';
+        };
+        document.getElementById('toggle-login').onclick = () => {
+            document.getElementById('login-form').style.display = 'block';
+            document.getElementById('signup-form').style.display = 'none';
+        };
+
+        document.getElementById('btn-signup').onclick = async () => {
+            const user = document.getElementById('signup-user').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const pass = document.getElementById('signup-pass').value.trim();
+            if (!user || !email || !pass) return showToast("All identity fields required", "error");
+            try {
+                const snap = await db.ref(`usernames/${user}`).get();
+                if (snap.exists()) return showToast("Call sign already taken", "error");
+                const cred = await auth.createUserWithEmailAndPassword(email, pass);
+                await db.ref(`users/${cred.user.uid}`).set({ username: user, email, status: 'online', bio: 'New Agent' });
+                await db.ref(`usernames/${user}`).set(cred.user.uid);
+                showToast("Identity Indexed");
+            } catch (err) { showToast(err.message, "error"); }
+        };
+
+        document.getElementById('btn-login').onclick = async () => {
+            const email = document.getElementById('auth-email').value.trim();
+            const pass = document.getElementById('auth-pass').value.trim();
+            try { await auth.signInWithEmailAndPassword(email, pass); } catch (err) { showToast(err.message, "error"); }
+        };
+
+        document.getElementById('btn-logout').onclick = () => auth.signOut();
+
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                const snap = await db.ref(`users/${user.uid}`).get();
+                localUser = { uid: user.uid, ...snap.val() };
+                document.getElementById('auth-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'grid';
+                
+                // Update UI
+                document.getElementById('nav-username').innerText = localUser.username;
+                document.getElementById('nav-avatar').innerText = localUser.username[0].toUpperCase();
+                document.getElementById('welcome-name').innerText = localUser.username;
+                document.getElementById('pref-name').value = localUser.username;
+                document.getElementById('pref-status').value = localUser.bio || "";
+                
+                db.ref(`users/${user.uid}/status`).set('online');
+                db.ref(`users/${user.uid}/status`).onDisconnect().set('offline');
+                
+                syncUsers();
+                listenForCalls();
+                showToast("Authentication Established");
+            } else {
+                document.getElementById('auth-screen').style.display = 'flex';
+                document.getElementById('main-app').style.display = 'none';
+                if (localUser) db.ref(`users/${localUser.uid}/status`).set('offline');
+                localUser = null;
+            }
+        });
+
+        // USER SYNC
+        function syncUsers() {
+            db.ref('users').on('value', (snap) => {
+                const users = snap.val();
+                let onlineCount = 0;
+                const grids = [document.getElementById('main-user-grid'), document.getElementById('contacts-user-grid')];
+                grids.forEach(g => g.innerHTML = '');
+
+                Object.keys(users).forEach(uid => {
+                    if (uid === localUser.uid) return;
+                    const u = users[uid];
+                    if (u.status === 'online') onlineCount++;
+
+                    const card = `
+                        <div class="user-item glass" onclick="initiateCall('${uid}', '${u.username}')">
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <div class="avatar">${u.username[0].toUpperCase()}</div>
+                                <div>
+                                    <div style="font-weight: 700;">${u.username}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-dim);">${u.bio || 'Active Agent'}</div>
+                                </div>
+                            </div>
+                            <span class="status-badge status-${u.status}">${u.status}</span>
+                        </div>
+                    `;
+                    grids.forEach(g => g.innerHTML += card);
+                });
+                document.getElementById('stat-online').innerText = onlineCount;
+            });
+        }
+
+        // CALL LOGIC
+        async function initiateCall(targetUid, targetName) {
+            const room = `room_${localUser.uid.slice(0,4)}_${targetUid.slice(0,4)}`;
+            showToast(`Pinging ${targetName}...`);
+            await db.ref(`calls/${targetUid}`).set({ from: localUser.username, fromUid: localUser.uid, room, status: 'pinging' });
+            
+            const callRef = db.ref(`calls/${targetUid}`);
+            callRef.on('value', (s) => {
+                const data = s.val();
+                if (data?.status === 'accepted') { joinCall(room); callRef.off(); }
+                else if (!data || data.status === 'declined') { showToast("Link Access Denied", "error"); callRef.off(); }
+            });
+        }
+
+        function listenForCalls() {
+            db.ref(`calls/${localUser.uid}`).on('value', (s) => {
+                const data = s.val();
+                if (data?.status === 'pinging') {
+                    document.getElementById('inc-name').innerText = data.from;
+                    document.getElementById('inc-avatar').innerText = data.from[0].toUpperCase();
+                    document.getElementById('incoming-modal').style.display = 'flex';
+                    
+                    document.getElementById('btn-accept').onclick = async () => {
+                        await db.ref(`calls/${localUser.uid}`).update({ status: 'accepted' });
+                        document.getElementById('incoming-modal').style.display = 'none';
+                        joinCall(data.room);
+                    };
+                    document.getElementById('btn-decline').onclick = async () => {
+                        await db.ref(`calls/${localUser.uid}`).remove();
+                        document.getElementById('incoming-modal').style.display = 'none';
+                    };
+                } else if (data?.status === 'ended') { leaveCall(); }
+            });
+        }
+
+        async function joinCall(room) {
+            try {
+                [localTracks.audio, localTracks.video] = await AgoraRTC.createMicrophoneAndCameraTracks();
+                document.getElementById('call-overlay').style.display = 'block';
+                await client.join(AGORA_APP_ID, room, null, localUser.uid);
+                localTracks.video.play('local-video');
+                await client.publish([localTracks.audio, localTracks.video]);
+            } catch (err) { showToast(err.message, "error"); leaveCall(); }
+        }
+
+        async function leaveCall() {
+            Object.keys(localTracks).forEach(k => {
+                if (localTracks[k]) { localTracks[k].stop(); localTracks[k].close(); localTracks[k] = null; }
+            });
+            await client.leave();
+            document.getElementById('call-overlay').style.display = 'none';
+            if (localUser) db.ref(`calls/${localUser.uid}`).remove();
+        }
+
+        // AGORA EVENTS
+        client.on("user-published", async (u, type) => {
+            await client.subscribe(u, type);
+            if (type === "video") u.videoTrack.play("remote-video");
+            if (type === "audio") u.audioTrack.play();
+        });
+
+        // UI ACTIONS
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.onclick = () => navigate(item.dataset.view);
+        });
+
+        document.getElementById('call-end').onclick = async () => {
+            const snap = await db.ref(`calls/${localUser.uid}`).get();
+            if (snap.val()?.fromUid) db.ref(`calls/${snap.val().fromUid}`).set({ status: 'ended' });
+            leaveCall();
+        };
+
+        document.getElementById('call-mic').onclick = async function() {
+            localTracks.audio.muted ? await localTracks.audio.setMuted(false) : await localTracks.audio.setMuted(true);
+            this.classList.toggle('active-off');
+        };
+
+        document.getElementById('call-video').onclick = async function() {
+            localTracks.video.muted ? await localTracks.video.setMuted(false) : await localTracks.video.setMuted(true);
+            this.classList.toggle('active-off');
+        };
+
+        document.getElementById('call-screen').onclick = async function() {
+            if (!isScreenSharing) {
+                localTracks.screen = await AgoraRTC.createScreenVideoTrack();
+                await client.unpublish([localTracks.video]);
+                await client.publish([localTracks.screen]);
+                localTracks.screen.play('local-video');
+                isScreenSharing = true;
+                this.classList.add('active-off');
+            } else {
+                await client.unpublish([localTracks.screen]);
+                localTracks.screen.stop(); localTracks.screen.close();
+                await client.publish([localTracks.video]);
+                localTracks.video.play('local-video');
+                isScreenSharing = false;
+                this.classList.remove('active-off');
+            }
+        };
+
+        document.getElementById('save-settings').onclick = async () => {
+            const bio = document.getElementById('pref-status').value.trim();
+            await db.ref(`users/${localUser.uid}/bio`).set(bio);
+            showToast("Neural Config Updated");
+        };
+
+    </script>
+</body>
+</html>
