@@ -335,8 +335,8 @@
 
 <script>
         // FIREBASE & AGORA CONFIG
-        const AGORA_APP_ID = "afae03154c194cc5bb137d0de6608c09"; // Updated to Testing Mode App ID
-        const AGORA_TOKEN = null; // Token bypassed via Testing Mode
+        const AGORA_APP_ID = "afae03154c194cc5bb137d0de6608c09";
+        const AGORA_TOKEN = null; // Patch: Setting to null bypasses token errors in Testing Mode
 
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyCiOP84CNL286wRNRnpfWZxipA_taDKe4U",
@@ -345,13 +345,18 @@
             projectId: "vayucall",
             storageBucket: "vayucall.firebasestorage.app",
             messagingSenderId: "176686015389",
-            appId: "1:176686015389:web:9618ded395fb9059160574",
-            measurementId: "G-R19E6Y9N0X"
+            appId: "1:176686015389:web:9618ded395fb9059160574"
         };
 
         firebase.initializeApp(FIREBASE_CONFIG);
         const auth = firebase.auth();
         const db = firebase.database();
+
+        // 2. VIDEO ENGINE
+        const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        let localTracks = { audio: null, video: null, screen: null };
+        let localUser = null;
+        let isScreenSharing = false;
 
         // PERSISTENCE LOGIC
         function saveSession(userData) {
@@ -367,18 +372,15 @@
             localStorage.removeItem('vayucall_session');
         }
 
-        let localUser = null;
-        let localTracks = { video: null, audio: null, screen: null };
-        let client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-        let isScreenSharing = false;
-
         // UI HELPERS
         function showToast(msg, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
             const toast = document.createElement('div');
             toast.className = 'bg-white/5 backdrop-blur-xl border border-white/10 p-4 rounded-2xl text-sm font-semibold animate-fade-in shadow-2xl pointer-events-auto min-w-[280px] border-l-4';
             toast.style.borderLeftColor = type === 'error' ? '#F43F5E' : '#00E5FF';
             toast.innerHTML = msg;
-            document.getElementById('toast-container').appendChild(toast);
+            container.appendChild(toast);
             setTimeout(() => {
                 toast.classList.add('opacity-0', 'translate-x-10', 'transition-all', 'duration-500');
                 setTimeout(() => toast.remove(), 500);
@@ -387,17 +389,22 @@
 
         function closeSidebar() {
             if (window.innerWidth < 1024) {
-                document.getElementById('sidebar').classList.add('-translate-x-full');
+                const sidebar = document.getElementById('sidebar');
                 const overlay = document.getElementById('sidebar-overlay');
-                overlay.classList.add('opacity-0');
-                setTimeout(() => overlay.classList.add('hidden'), 300);
-                document.getElementById('mobile-nav-toggle').classList.remove('hidden');
+                const toggle = document.getElementById('mobile-nav-toggle');
+                if (sidebar) sidebar.classList.add('-translate-x-full');
+                if (overlay) {
+                    overlay.classList.add('opacity-0');
+                    setTimeout(() => overlay.classList.add('hidden'), 300);
+                }
+                if (toggle) toggle.classList.remove('hidden');
             }
         }
 
         function navigate(viewId) {
             document.querySelectorAll('.view-section').forEach(s => s.classList.add('hidden'));
-            document.getElementById(`view-${viewId}`).classList.remove('hidden');
+            const view = document.getElementById(`view-${viewId}`);
+            if (view) view.classList.remove('hidden');
 
             // Update Navigation UI
             document.querySelectorAll('.nav-item').forEach(i => {
@@ -414,64 +421,88 @@
         }
 
         // MOBILE NAV
-        document.getElementById('mobile-nav-toggle').onclick = (e) => {
-            e.stopPropagation();
-            document.getElementById('sidebar').classList.remove('-translate-x-full');
-            const overlay = document.getElementById('sidebar-overlay');
-            overlay.classList.remove('hidden');
-            setTimeout(() => overlay.classList.remove('opacity-0'), 10);
-            document.getElementById('mobile-nav-toggle').classList.add('hidden');
-        };
+        const mobileNavToggle = document.getElementById('mobile-nav-toggle');
+        if (mobileNavToggle) {
+            mobileNavToggle.onclick = (e) => {
+                e.stopPropagation();
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                if (sidebar) sidebar.classList.remove('-translate-x-full');
+                if (overlay) {
+                    overlay.classList.remove('hidden');
+                    setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+                }
+                mobileNavToggle.classList.add('hidden');
+            };
+        }
 
-        document.getElementById('mobile-sidebar-close').onclick = closeSidebar;
-        document.getElementById('sidebar-overlay').onclick = closeSidebar;
+        const mobileSidebarClose = document.getElementById('mobile-sidebar-close');
+        if (mobileSidebarClose) mobileSidebarClose.onclick = closeSidebar;
+
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        if (sidebarOverlay) sidebarOverlay.onclick = closeSidebar;
 
         document.addEventListener('click', (e) => {
             const sidebar = document.getElementById('sidebar');
             const toggle = document.getElementById('mobile-nav-toggle');
             if (window.innerWidth < 1024 &&
-                !sidebar.classList.contains('-translate-x-full') &&
+                sidebar && !sidebar.classList.contains('-translate-x-full') &&
                 !sidebar.contains(e.target) &&
-                !toggle.contains(e.target)) {
+                toggle && !toggle.contains(e.target)) {
                 closeSidebar();
             }
         });
 
         // AUTH HANDLERS
-        document.getElementById('toggle-signup').onclick = () => {
-            document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('signup-form').classList.remove('hidden');
-        };
-        document.getElementById('toggle-login').onclick = () => {
-            document.getElementById('login-form').classList.remove('hidden');
-            document.getElementById('signup-form').classList.add('hidden');
-        };
+        const toggleSignup = document.getElementById('toggle-signup');
+        if (toggleSignup) {
+            toggleSignup.onclick = () => {
+                document.getElementById('login-form').classList.add('hidden');
+                document.getElementById('signup-form').classList.remove('hidden');
+            };
+        }
+        const toggleLogin = document.getElementById('toggle-login');
+        if (toggleLogin) {
+            toggleLogin.onclick = () => {
+                document.getElementById('login-form').classList.remove('hidden');
+                document.getElementById('signup-form').classList.add('hidden');
+            };
+        }
 
-        document.getElementById('btn-signup').onclick = async () => {
-            const user = document.getElementById('signup-user').value.trim();
-            const email = document.getElementById('signup-email').value.trim();
-            const pass = document.getElementById('signup-pass').value.trim();
-            if (!user || !email || !pass) return showToast("All identity fields required", "error");
-            try {
-                const snap = await db.ref(`usernames/${user}`).get();
-                if (snap.exists()) return showToast("Call sign already taken", "error");
-                const cred = await auth.createUserWithEmailAndPassword(email, pass);
-                await db.ref(`users/${cred.user.uid}`).set({ username: user, email, status: 'online', bio: 'New Agent' });
-                await db.ref(`usernames/${user}`).set(cred.user.uid);
-                showToast("Identity Indexed");
-            } catch (err) { showToast(err.message, "error"); }
-        };
+        const btnSignup = document.getElementById('btn-signup');
+        if (btnSignup) {
+            btnSignup.onclick = async () => {
+                const user = document.getElementById('signup-user').value.trim();
+                const email = document.getElementById('signup-email').value.trim();
+                const pass = document.getElementById('signup-pass').value.trim();
+                if (!user || !email || !pass) return showToast("All identity fields required", "error");
+                try {
+                    const snap = await db.ref(`usernames/${user}`).get();
+                    if (snap.exists()) return showToast("Call sign already taken", "error");
+                    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+                    await db.ref(`users/${cred.user.uid}`).set({ username: user, email, status: 'online', bio: 'New Agent' });
+                    await db.ref(`usernames/${user}`).set(cred.user.uid);
+                    showToast("Identity Indexed");
+                } catch (err) { showToast(err.message, "error"); }
+            };
+        }
 
-        document.getElementById('btn-login').onclick = async () => {
-            const email = document.getElementById('auth-email').value.trim();
-            const pass = document.getElementById('auth-pass').value.trim();
-            try { await auth.signInWithEmailAndPassword(email, pass); } catch (err) { showToast(err.message, "error"); }
-        };
+        const btnLogin = document.getElementById('btn-login');
+        if (btnLogin) {
+            btnLogin.onclick = async () => {
+                const email = document.getElementById('auth-email').value.trim();
+                const pass = document.getElementById('auth-pass').value.trim();
+                try { await auth.signInWithEmailAndPassword(email, pass); } catch (err) { showToast(err.message, "error"); }
+            };
+        }
 
-        document.getElementById('btn-logout').onclick = () => {
-            clearSession();
-            auth.signOut();
-        };
+        const btnLogout = document.getElementById('btn-logout');
+        if (btnLogout) {
+            btnLogout.onclick = () => {
+                clearSession();
+                auth.signOut();
+            };
+        }
 
         // Check for cached session immediately for faster UI transition
         const cachedUser = getSession();
@@ -484,11 +515,17 @@
         }
 
         function applyUserUI(data) {
-            document.getElementById('nav-username').innerText = data.username;
-            document.getElementById('nav-avatar').innerText = data.username[0].toUpperCase();
-            document.getElementById('welcome-name').innerText = data.username;
-            document.getElementById('pref-name').value = data.username;
-            document.getElementById('pref-status').value = data.bio || "";
+            const navUsername = document.getElementById('nav-username');
+            const navAvatar = document.getElementById('nav-avatar');
+            const welcomeName = document.getElementById('welcome-name');
+            const prefName = document.getElementById('pref-name');
+            const prefStatus = document.getElementById('pref-status');
+
+            if (navUsername) navUsername.innerText = data.username;
+            if (navAvatar) navAvatar.innerText = data.username[0].toUpperCase();
+            if (welcomeName) welcomeName.innerText = data.username;
+            if (prefName) prefName.value = data.username;
+            if (prefStatus) prefStatus.value = data.bio || "";
         }
 
         auth.onAuthStateChanged(async (user) => {
@@ -523,91 +560,50 @@
         function syncUsers() {
             db.ref('users').on('value', (snap) => {
                 const users = snap.val();
+                if (!users) return;
                 let onlineCount = 0;
                 const grids = [document.getElementById('main-user-grid'), document.getElementById('contacts-user-grid')];
-                grids.forEach(g => g.innerHTML = '');
+                grids.forEach(g => { if (g) g.innerHTML = ''; });
 
                 Object.keys(users).forEach(uid => {
-                    if (uid === localUser.uid) return;
+                    if (localUser && uid === localUser.uid) return;
                     const u = users[uid];
                     if (u.status === 'online') onlineCount++;
 
                     const card = `
                         <div class="bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-3xl flex items-center justify-between group cursor-pointer hover:bg-white/10 hover:scale-[1.02] transition-all" onclick="initiateCall('${uid}', '${u.username}')">
                             <div class="flex items-center gap-4">
-                                <div class="w-12 h-12 rounded-2xl bg-[#161624] flex items-center justify-center font-bold text-[#00E5FF] group-hover:bg-[#00E5FF] group-hover:text-black transition-colors">${u.username[0].toUpperCase()}</div>
+                                <div class="w-12 h-12 rounded-2xl bg-[#161624] flex items-center justify-center font-bold text-[#00E5FF] group-hover:bg-[#00E5FF] group-hover:text-black transition-colors">${u.username ? u.username[0].toUpperCase() : '?'}</div>
                                 <div>
-                                    <div class="font-bold">${u.username}</div>
+                                    <div class="font-bold">${u.username || 'Unknown'}</div>
                                     <div class="text-[10px] text-[#94A3B8] uppercase font-bold tracking-widest">${u.bio || 'Active Agent'}</div>
                                 </div>
                             </div>
                             <span class="px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${u.status === 'online' ? 'bg-[#10B981]/10 text-[#10B981]' : 'bg-white/5 text-[#94A3B8]'}">${u.status}</span>
                         </div>
                     `;
-                    grids.forEach(g => g.innerHTML += card);
+                    grids.forEach(g => { if (g) g.innerHTML += card; });
                 });
-                document.getElementById('stat-online').innerText = onlineCount;
+                const statOnline = document.getElementById('stat-online');
+                if (statOnline) statOnline.innerText = onlineCount;
             });
         }
 
-        // CALL LOGIC
-        async function initiateCall(targetUid, targetName) {
-            // Dynamic room generation for unique sessions
-            const room = `room_${localUser.uid.slice(0,4)}_${targetUid.slice(0,4)}`;
-
-            showToast(`Pinging ${targetName}...`);
-            await db.ref(`calls/${targetUid}`).set({ from: localUser.username, fromUid: localUser.uid, room, status: 'pinging' });
-
-            const callRef = db.ref(`calls/${targetUid}`);
-            callRef.on('value', (s) => {
-                const data = s.val();
-                if (data?.status === 'accepted') { joinCall(room); callRef.off(); }
-                else if (!data || data.status === 'declined') { showToast("Link Access Denied", "error"); callRef.off(); }
-            });
-        }
-
-        function listenForCalls() {
-            db.ref(`calls/${localUser.uid}`).on('value', (s) => {
-                const data = s.val();
-                if (data?.status === 'pinging') {
-                    document.getElementById('inc-name').innerText = data.from;
-                    document.getElementById('inc-avatar').innerText = data.from[0].toUpperCase();
-                    document.getElementById('incoming-modal').classList.remove('hidden');
-                    document.getElementById('incoming-modal').classList.add('flex');
-
-                    document.getElementById('btn-accept').onclick = async () => {
-                        await db.ref(`calls/${localUser.uid}`).update({ status: 'accepted' });
-                        document.getElementById('incoming-modal').classList.add('hidden');
-                        joinCall(data.room);
-                    };
-                    document.getElementById('btn-decline').onclick = async () => {
-                        await db.ref(`calls/${localUser.uid}`).remove();
-                        document.getElementById('incoming-modal').classList.add('hidden');
-                    };
-                } else if (data?.status === 'ended') { leaveCall(); }
-            });
-        }
-
+        // 3. CORE CALLING LOGIC (PATCHED FOR STABILITY)
         async function joinCall(room) {
             try {
                 [localTracks.audio, localTracks.video] = await AgoraRTC.createMicrophoneAndCameraTracks();
                 document.getElementById('call-overlay').classList.remove('hidden');
 
-                // Token verification loops fail when checking alpha-numeric strings unless explicitly hashed.
+                // Generate a random numeric UID for stable connections
                 const numericUid = Math.floor(Math.random() * 1000000);
                 await client.join(AGORA_APP_ID, room, AGORA_TOKEN, numericUid);
 
                 localTracks.video.play('local-video');
                 await client.publish([localTracks.audio, localTracks.video]);
             } catch (err) {
-                console.error("Agora Join Error:", err);
-                if (err.message.includes("invalid vendor key")) {
-                    showToast("<b>Agora Error:</b> Invalid App ID. Please verify your App ID in the Agora Console.", "error");
-                } else if (err.message.includes("dynamic use static key") || err.code === "CAN_NOT_GET_GATEWAY_SERVER") {
-                    showToast("<b>Agora Security Error:</b> Token parameters don't match channel coordinates. Try Solution 1.", "error");
-                } else {
-                    showToast(err.message, "error");
-                }
+                console.error("Agora Connection Error:", err);
+                showToast("Connection failed: " + err.message, "error");
                 leaveCall();
             }
         }
@@ -621,6 +617,52 @@
             if (localUser) db.ref(`calls/${localUser.uid}`).remove();
         }
 
+        // CALL SIGNALING
+        async function initiateCall(targetUid, targetName) {
+            const room = "testing"; // Using static room for stability with null token
+            showToast(`Pinging ${targetName}...`);
+            await db.ref(`calls/${targetUid}`).set({ from: localUser.username, fromUid: localUser.uid, room, status: 'pinging' });
+
+            const callRef = db.ref(`calls/${targetUid}`);
+            callRef.on('value', (s) => {
+                const data = s.val();
+                if (data?.status === 'accepted') { joinCall(room); callRef.off(); }
+                else if (!data || data.status === 'declined') { showToast("Link Access Denied", "error"); callRef.off(); }
+                else if (data?.status === 'ended') { leaveCall(); callRef.off(); }
+            });
+        }
+
+        function listenForCalls() {
+            db.ref(`calls/${localUser.uid}`).on('value', (s) => {
+                const data = s.val();
+                if (data?.status === 'pinging') {
+                    const incName = document.getElementById('inc-name');
+                    const incAvatar = document.getElementById('inc-avatar');
+                    const incModal = document.getElementById('incoming-modal');
+
+                    if (incName) incName.innerText = data.from;
+                    if (incAvatar) incAvatar.innerText = data.from[0].toUpperCase();
+                    if (incModal) {
+                        incModal.classList.remove('hidden');
+                        incModal.classList.add('flex');
+                    }
+
+                    document.getElementById('btn-accept').onclick = async () => {
+                        await db.ref(`calls/${localUser.uid}`).update({ status: 'accepted' });
+                        if (incModal) incModal.classList.add('hidden');
+                        joinCall(data.room);
+                    };
+                    document.getElementById('btn-decline').onclick = async () => {
+                        await db.ref(`calls/${localUser.uid}`).remove();
+                        if (incModal) incModal.classList.add('hidden');
+                    };
+                } else if (data?.status === 'ended') {
+                    leaveCall();
+                }
+            });
+        }
+
+        // 4. REMOTE STREAM HANDLING
         client.on("user-published", async (u, type) => {
             await client.subscribe(u, type);
             if (type === "video") u.videoTrack.play("remote-video");
@@ -632,45 +674,64 @@
             item.onclick = () => navigate(item.dataset.view);
         });
 
-        document.getElementById('call-end').onclick = async () => {
-            const snap = await db.ref(`calls/${localUser.uid}`).get();
-            if (snap.val()?.fromUid) db.ref(`calls/${snap.val().fromUid}`).set({ status: 'ended' });
-            leaveCall();
-        };
+        const callEnd = document.getElementById('call-end');
+        if (callEnd) {
+            callEnd.onclick = async () => {
+                const snap = await db.ref(`calls/${localUser.uid}`).get();
+                if (snap.val()?.fromUid) db.ref(`calls/${snap.val().fromUid}`).set({ status: 'ended' });
+                leaveCall();
+            };
+        }
 
-        document.getElementById('call-mic').onclick = async function () {
-            localTracks.audio.muted ? await localTracks.audio.setMuted(false) : await localTracks.audio.setMuted(true);
-            this.classList.toggle('active-off');
-        };
+        const callMic = document.getElementById('call-mic');
+        if (callMic) {
+            callMic.onclick = async function () {
+                if (!localTracks.audio) return;
+                localTracks.audio.muted ? await localTracks.audio.setMuted(false) : await localTracks.audio.setMuted(true);
+                this.classList.toggle('active-off');
+            };
+        }
 
-        document.getElementById('call-video').onclick = async function () {
-            localTracks.video.muted ? await localTracks.video.setMuted(false) : await localTracks.video.setMuted(true);
-            this.classList.toggle('active-off');
-        };
+        const callVideo = document.getElementById('call-video');
+        if (callVideo) {
+            callVideo.onclick = async function () {
+                if (!localTracks.video) return;
+                localTracks.video.muted ? await localTracks.video.setMuted(false) : await localTracks.video.setMuted(true);
+                this.classList.toggle('active-off');
+            };
+        }
 
-        document.getElementById('call-screen').onclick = async function () {
-            if (!isScreenSharing) {
-                localTracks.screen = await AgoraRTC.createScreenVideoTrack();
-                await client.unpublish([localTracks.video]);
-                await client.publish([localTracks.screen]);
-                localTracks.screen.play('local-video');
-                isScreenSharing = true;
-                this.classList.add('active-off');
-            } else {
-                await client.unpublish([localTracks.screen]);
-                localTracks.screen.stop(); localTracks.screen.close();
-                await client.publish([localTracks.video]);
-                localTracks.video.play('local-video');
-                isScreenSharing = false;
-                this.classList.remove('active-off');
-            }
-        };
+        const callScreen = document.getElementById('call-screen');
+        if (callScreen) {
+            callScreen.onclick = async function () {
+                if (!isScreenSharing) {
+                    try {
+                        localTracks.screen = await AgoraRTC.createScreenVideoTrack();
+                        await client.unpublish([localTracks.video]);
+                        await client.publish([localTracks.screen]);
+                        localTracks.screen.play('local-video');
+                        isScreenSharing = true;
+                        this.classList.add('active-off');
+                    } catch (e) { showToast("Screen share cancelled", "error"); }
+                } else {
+                    await client.unpublish([localTracks.screen]);
+                    localTracks.screen.stop(); localTracks.screen.close();
+                    await client.publish([localTracks.video]);
+                    localTracks.video.play('local-video');
+                    isScreenSharing = false;
+                    this.classList.remove('active-off');
+                }
+            };
+        }
 
-        document.getElementById('save-settings').onclick = async () => {
-            const bio = document.getElementById('pref-status').value.trim();
-            await db.ref(`users/${localUser.uid}/bio`).set(bio);
-            showToast("Neural Config Updated");
-        };
+        const saveSettings = document.getElementById('save-settings');
+        if (saveSettings) {
+            saveSettings.onclick = async () => {
+                const bio = document.getElementById('pref-status').value.trim();
+                await db.ref(`users/${localUser.uid}/bio`).set(bio);
+                showToast("Neural Config Updated");
+            };
+        }
     </script>
 </body>
 
