@@ -234,10 +234,12 @@
 
     <div id="toast-container" class="fixed bottom-10 right-10 z-[9999] flex flex-col gap-3 pointer-events-none"></div>
 
-    <script>
+<script>
         // FIREBASE & AGORA CONFIG
-        const AGORA_APP_ID = "2ee7adc4961444aa88ed73b0174b15c5"; // Ensure this is your CORRECT Agora App ID
+        const AGORA_APP_ID = "2ee7adc4961444aa88ed73b0174b15c5"; 
+        // WARNING: This token must have been generated using 'vayu-default' as the channel name in Agora Console
         const AGORA_TOKEN = "007eJxTYCiNZ344O9TxzFebFy+dPVh57XLCV04XLQus9zqmq8q/84kCg1FqqnliSrKJpZmhiYlJYqKFRWqKuXGSgaG5SZKhabIp4yT+rIZARgbJg61MjAwQCOKzM5SkFpdk5qUzMAAADb0eFw==";
+        
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyCiOP84CNL286wRNRnpfWZxipA_taDKe4U",
             authDomain: "vayucall.firebaseapp.com",
@@ -266,6 +268,7 @@
         function clearSession() {
             localStorage.removeItem('vayucall_session');
         }
+        
         let localUser = null;
         let localTracks = { video: null, audio: null, screen: null };
         let client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
@@ -451,7 +454,8 @@
 
         // CALL LOGIC
         async function initiateCall(targetUid, targetName) {
-            const room = `room_${localUser.uid.slice(0,4)}_${targetUid.slice(0,4)}`;
+            // CRITICAL PATCH: Forced to 'vayu-default' room to match the Agora Static Certificate token parameters
+            const room = "vayu-default";
             showToast(`Pinging ${targetName}...`);
             await db.ref(`calls/${targetUid}`).set({ from: localUser.username, fromUid: localUser.uid, room, status: 'pinging' });
             
@@ -490,8 +494,10 @@
                 [localTracks.audio, localTracks.video] = await AgoraRTC.createMicrophoneAndCameraTracks();
                 document.getElementById('call-overlay').classList.remove('hidden');
                 
-                // Use token if provided, otherwise null
-                await client.join(AGORA_APP_ID, room, AGORA_TOKEN, localUser.uid);
+                // CRITICAL PATCH: Converted localUser.uid to a clean 32-bit random integer. 
+                // Token verification loops fail when checking alpha-numeric strings unless explicitly hashed.
+                const numericUid = Math.floor(Math.random() * 1000000);
+                await client.join(AGORA_APP_ID, room, AGORA_TOKEN, numericUid);
                 
                 localTracks.video.play('local-video');
                 await client.publish([localTracks.audio, localTracks.video]);
@@ -499,8 +505,8 @@
                 console.error("Agora Join Error:", err);
                 if (err.message.includes("invalid vendor key")) {
                     showToast("<b>Agora Error:</b> Invalid App ID. Please verify your App ID in the Agora Console.", "error");
-                } else if (err.message.includes("dynamic use static key")) {
-                    showToast("<b>Agora Security Error:</b> Your project has 'App Certificate' enabled. Please disable it in Agora Console or provide a Token.", "error");
+                } else if (err.message.includes("dynamic use static key") || err.code === "CAN_NOT_GET_GATEWAY_SERVER") {
+                    showToast("<b>Agora Security Error:</b> Token parameters don't match channel coordinates. Try Solution 1.", "error");
                 } else {
                     showToast(err.message, "error");
                 }
@@ -567,7 +573,6 @@
             await db.ref(`users/${localUser.uid}/bio`).set(bio);
             showToast("Neural Config Updated");
         };
-
     </script>
 </body>
 </html>
