@@ -26,6 +26,11 @@ const Dashboard: React.FC = () => {
     ringtoneRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3');
     ringtoneRef.current.loop = true;
 
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
     const usersRef = ref(database, 'users');
     const unsubscribeUsers = onValue(usersRef, (snapshot) => {
       const data = snapshot.val();
@@ -43,12 +48,32 @@ const Dashboard: React.FC = () => {
       const activeOutgoing = calls.find(c => c.callerUid === currentUser!.uid && c.status === 'pending');
       
       if (activeIncoming) {
-        setIncomingCall(activeIncoming);
-        ringtoneRef.current?.play().catch(() => console.log('Audio play blocked'));
+        if (!incomingCall || incomingCall.id !== activeIncoming.id) {
+          setIncomingCall(activeIncoming);
+          
+          // Ringing and Vibration
+          ringtoneRef.current?.play().catch(() => console.log('Audio play blocked'));
+          if ('vibrate' in navigator) {
+            navigator.vibrate([500, 200, 500, 200, 500]);
+          }
+
+          // Show local notification if app is in background/not focused
+          if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('Incoming Vayucall', {
+              body: `Incoming call from ${activeIncoming.callerEmail}`,
+              icon: '/logo.png',
+              tag: 'incoming-call',
+              requireInteraction: true
+            });
+          }
+        }
       } else {
         setIncomingCall(null);
         ringtoneRef.current?.pause();
         if (ringtoneRef.current) ringtoneRef.current.currentTime = 0;
+        if ('vibrate' in navigator) {
+          navigator.vibrate(0); // Stop vibration
+        }
       }
 
       if (activeOutgoing) {
@@ -66,8 +91,11 @@ const Dashboard: React.FC = () => {
       unsubscribeUsers();
       unsubscribeCalls();
       ringtoneRef.current?.pause();
+      if ('vibrate' in navigator) {
+        navigator.vibrate(0);
+      }
     };
-  }, [currentUser, navigate]);
+  }, [currentUser, navigate, incomingCall]);
 
   const filteredUsers = users.filter(user => 
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -109,6 +137,14 @@ const Dashboard: React.FC = () => {
     } catch (err) {
       console.error('Logout error:', err);
     }
+  };
+
+  const formatDisplayName = (email: string) => {
+    const name = email.split('@')[0];
+    if (name.length > 12) {
+      return name.substring(0, 10) + '...';
+    }
+    return name;
   };
 
   return (
@@ -175,17 +211,19 @@ const Dashboard: React.FC = () => {
             </div>
           ) : (
             filteredUsers.map((user) => (
-              <div key={user.uid} className="glass-card group flex items-center justify-between hover:bg-white/[0.08]">
-                <div className="flex items-center space-x-4">
-                  <div className="relative">
-                    <div className="w-12 h-12 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl flex items-center justify-center text-white font-black text-lg border border-white/10 group-hover:border-cyan/50 transition-colors">
+              <div key={user.uid} className="glass-card group flex items-center justify-between hover:bg-white/[0.08] !p-4">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="relative flex-shrink-0">
+                    <div className="w-11 h-11 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl flex items-center justify-center text-white font-black text-base border border-white/10 group-hover:border-cyan/50 transition-colors">
                       {user.email[0].toUpperCase()}
                     </div>
-                    <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-[#050b18] ${user.status === 'online' ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-gray-600'}`}></div>
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[3px] border-[#050b18] ${user.status === 'online' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-gray-600'}`}></div>
                   </div>
-                  <div className="overflow-hidden">
-                    <p className="text-white font-bold truncate group-hover:text-cyan transition-colors">{user.email}</p>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-black">
+                  <div className="min-w-0">
+                    <p className="text-white font-bold text-sm truncate group-hover:text-cyan transition-colors" title={user.email}>
+                      {formatDisplayName(user.email)}
+                    </p>
+                    <p className="text-[9px] text-gray-500 uppercase tracking-widest font-black">
                       {user.status === 'online' ? 'Available' : 'Away'}
                     </p>
                   </div>
@@ -193,13 +231,13 @@ const Dashboard: React.FC = () => {
                 <button
                   onClick={() => handleCallUser(user.uid)}
                   disabled={user.status !== 'online' || !!outgoingCall || !!incomingCall}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                  className={`w-11 h-11 flex-shrink-0 rounded-2xl flex items-center justify-center transition-all duration-300 ${
                     user.status === 'online' 
                       ? 'bg-cyan/10 text-cyan hover:bg-cyan hover:text-deepBlue shadow-lg shadow-cyan/5' 
                       : 'bg-white/5 text-gray-700 cursor-not-allowed'
                   }`}
                 >
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 2V3z" />
                   </svg>
                 </button>

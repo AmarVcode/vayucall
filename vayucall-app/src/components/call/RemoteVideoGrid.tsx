@@ -1,4 +1,3 @@
-import React from 'react';
 import RemoteVideoTile from './RemoteVideoTile';
 import { IRemoteVideoTrack, IRemoteAudioTrack, UID } from 'agora-rtc-sdk-ng';
 
@@ -12,7 +11,7 @@ interface RemoteVideoGridProps {
   remoteUsers: RemoteUser[];
 }
 
-const RemoteVideoGrid: React.FC<RemoteVideoGridProps> = ({ remoteUsers }) => {
+const RemoteVideoGrid = ({ remoteUsers }: RemoteVideoGridProps) => {
   if (remoteUsers.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-4">
@@ -23,9 +22,16 @@ const RemoteVideoGrid: React.FC<RemoteVideoGridProps> = ({ remoteUsers }) => {
   }
 
   return (
-    <div className="flex-1 p-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 auto-rows-min overflow-y-auto">
-      {remoteUsers.map((user) => (
-        <RemoteVideoTile key={user.uid} user={user} />
+    <div className="flex-1 relative w-full h-full overflow-hidden bg-black">
+      {remoteUsers.map((user, index) => (
+        <div 
+          key={user.uid} 
+          className={`absolute inset-0 transition-opacity duration-500 ${
+            index === remoteUsers.length - 1 ? 'opacity-100 z-10' : 'opacity-0 z-0'
+          }`}
+        >
+          <RemoteVideoTile user={user} isFullScreen={true} />
+        </div>
       ))}
     </div>
   );

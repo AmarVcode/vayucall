@@ -26,6 +26,8 @@ const CallRoom: React.FC = () => {
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(true);
+  const callIdRef = useRef<string | null>(null);
+  const otherUidRef = useRef<string | null>(null);
 
   const tracksRef = useRef<ILocalTrack[]>([]);
 
@@ -42,13 +44,13 @@ const CallRoom: React.FC = () => {
       try {
         agoraClient = AgoraService.init();
 
-        agoraClient.on('user-published', async (user, mediaType) => {
+        agoraClient.on('user-published', async (user: any, mediaType: 'video' | 'audio') => {
           await agoraClient.subscribe(user, mediaType);
           
-          setRemoteUsers((prev) => {
-            const existingUser = prev.find((u) => u.uid === user.uid);
+          setRemoteUsers((prev: RemoteUser[]) => {
+            const existingUser = prev.find((u: RemoteUser) => u.uid === user.uid);
             if (existingUser) {
-              return prev.map((u) => 
+              return prev.map((u: RemoteUser) => 
                 u.uid === user.uid 
                   ? { ...u, videoTrack: mediaType === 'video' ? user.videoTrack || null : u.videoTrack, audioTrack: mediaType === 'audio' ? user.audioTrack || null : u.audioTrack }
                   : u
@@ -62,18 +64,18 @@ const CallRoom: React.FC = () => {
           });
         });
 
-        agoraClient.on('user-unpublished', (user, mediaType) => {
-          setRemoteUsers((prev) => 
-            prev.map((u) => 
+        agoraClient.on('user-unpublished', (user: any, mediaType: 'video' | 'audio') => {
+          setRemoteUsers((prev: RemoteUser[]) => 
+            prev.map((u: RemoteUser) => 
               u.uid === user.uid 
                 ? { ...u, videoTrack: mediaType === 'video' ? null : u.videoTrack, audioTrack: mediaType === 'audio' ? null : u.audioTrack }
                 : u
-            ).filter(u => u.videoTrack || u.audioTrack)
+            ).filter((u: RemoteUser) => u.videoTrack || u.audioTrack)
           );
         });
 
-        agoraClient.on('user-left', (user) => {
-          setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid));
+        agoraClient.on('user-left', (user: any) => {
+          setRemoteUsers((prev: RemoteUser[]) => prev.filter((u: RemoteUser) => u.uid !== user.uid));
         });
 
         const tracks = await AgoraService.createLocalTracks();
@@ -97,8 +99,13 @@ const CallRoom: React.FC = () => {
 
     const unsubscribeStatus = SignalingService.subscribeToCalls(currentUser!.uid, (calls) => {
       const currentCall = calls.find(c => c.channelName === channelName);
-      if (currentCall && (currentCall.status === 'ended' || currentCall.status === 'rejected')) {
-        navigate('/dashboard');
+      if (currentCall) {
+        callIdRef.current = currentCall.id;
+        otherUidRef.current = currentCall.callerUid === currentUser!.uid ? currentCall.receiverUid : currentCall.callerUid;
+        
+        if (currentCall.status === 'ended' || currentCall.status === 'rejected') {
+          navigate('/dashboard');
+        }
       }
     });
 
@@ -106,14 +113,9 @@ const CallRoom: React.FC = () => {
       const leave = async () => {
         if (agoraClient) {
           await AgoraService.leaveChannel(agoraClient, tracksRef.current);
-          const callsRef = SignalingService.subscribeToCalls(currentUser!.uid, (calls) => {
-            const currentCall = calls.find(c => c.channelName === channelName);
-            if (currentCall && currentCall.status !== 'ended') {
-              const otherUid = currentCall.callerUid === currentUser!.uid ? currentCall.receiverUid : currentCall.callerUid;
-              SignalingService.updateCallStatus(currentUser!.uid, otherUid, currentCall.id, 'ended');
-            }
-          });
-          callsRef();
+          if (callIdRef.current && otherUidRef.current) {
+            await SignalingService.updateCallStatus(currentUser!.uid, otherUidRef.current, callIdRef.current, 'ended');
+          }
         }
       };
       leave();
@@ -143,7 +145,14 @@ const CallRoom: React.FC = () => {
     }
   };
 
-  const handleLeave = () => {
+  const handleLeave = async () => {
+    if (callIdRef.current && otherUidRef.current) {
+      try {
+        await SignalingService.updateCallStatus(currentUser!.uid, otherUidRef.current, callIdRef.current, 'ended');
+      } catch (err) {
+        console.error('Failed to end call:', err);
+      }
+    }
     navigate('/dashboard');
   };
 
@@ -172,21 +181,21 @@ const CallRoom: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#020611] flex flex-col relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 p-6 bg-gradient-to-b from-black/80 to-transparent z-30 flex items-center justify-between pointer-events-none">
+    <div className="h-screen w-full bg-[#020611] flex flex-col relative overflow-hidden select-none touch-none">
+      <div className="absolute top-0 left-0 right-0 p-6 pt-12 bg-gradient-to-b from-black/80 via-black/40 to-transparent z-30 flex items-center justify-between pointer-events-none">
         <div className="flex items-center space-x-3 pointer-events-auto">
-          <div className="w-8 h-8 bg-gradient-to-br from-cyan to-neonBlue rounded-xl flex items-center justify-center shadow-lg">
-            <img src="/logo.png" alt="Vayucall" className="w-6 h-6 rounded-full" />
+          <div className="w-10 h-10 bg-gradient-to-br from-cyan to-neonBlue rounded-2xl flex items-center justify-center shadow-lg border border-white/10">
+            <img src="/logo.png" alt="Vayucall" className="w-8 h-8 rounded-full" />
           </div>
-          <div className="hidden sm:block">
-            <h1 className="text-lg font-black text-white leading-none">Vayucall</h1>
-            <p className="text-[10px] text-cyan uppercase tracking-widest font-bold">P2P Secure Channel</p>
+          <div>
+            <h1 className="text-lg font-black text-white leading-none tracking-tight">Vayucall</h1>
+            <p className="text-[9px] text-cyan uppercase tracking-[0.2em] font-black mt-1">P2P Secure</p>
           </div>
         </div>
         
-        <div className="flex items-center space-x-3 pointer-events-auto bg-black/40 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
+        <div className="flex items-center space-x-3 pointer-events-auto bg-black/40 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/10">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.8)]"></div>
-          <span className="text-[10px] text-white font-black uppercase tracking-widest">Live Session</span>
+          <span className="text-[10px] text-white font-black uppercase tracking-widest">Live</span>
         </div>
       </div>
 
