@@ -44,8 +44,20 @@ const Dashboard: React.FC = () => {
     });
 
     const unsubscribeCalls = SignalingService.subscribeToCalls(currentUser!.uid, (calls) => {
-      const activeIncoming = calls.find(c => c.receiverUid === currentUser!.uid && c.status === 'pending');
-      const activeOutgoing = calls.find(c => c.callerUid === currentUser!.uid && c.status === 'pending');
+      const now = Date.now();
+      const STALE_CALL_THRESHOLD = 60000; // 1 minute
+
+      const activeIncoming = calls.find(c => 
+        c.receiverUid === currentUser!.uid && 
+        c.status === 'pending' && 
+        (now - c.timestamp) < STALE_CALL_THRESHOLD
+      );
+      
+      const activeOutgoing = calls.find(c => 
+        c.callerUid === currentUser!.uid && 
+        c.status === 'pending' && 
+        (now - c.timestamp) < STALE_CALL_THRESHOLD
+      );
       
       if (activeIncoming) {
         if (!incomingCall || incomingCall.id !== activeIncoming.id) {
@@ -79,7 +91,11 @@ const Dashboard: React.FC = () => {
       if (activeOutgoing) {
         setOutgoingCall(activeOutgoing);
       } else {
-        const acceptedCall = calls.find(c => c.callerUid === currentUser!.uid && c.status === 'accepted');
+        const acceptedCall = calls.find(c => 
+          c.callerUid === currentUser!.uid && 
+          c.status === 'accepted' &&
+          (now - c.timestamp) < STALE_CALL_THRESHOLD
+        );
         if (acceptedCall) {
           navigate(`/call/${acceptedCall.channelName}`);
         }
