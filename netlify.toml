@@ -1,0 +1,15 @@
+[build]
+  # The directory where your React application lives
+  base = "vayucall-app"
+  
+  # The directory where Vite outputs the build (relative to base)
+  publish = "dist"
+  
+  # The command to build your application
+  command = "npm run build"
+
+# Handle React Router (SPA) redirects
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
